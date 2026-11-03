@@ -20,6 +20,10 @@ struct Track: Identifiable, Hashable {
     var hasArtwork: Bool
 
     var energy: Int { rating / 20 }
+    var titleText: String { title.display }
+    var bpmText: String { bpm > 0 ? String(bpm) : "" }
+    var tagsText: String { comments.tags.joined(separator: " · ") }
+    var addedText: String { dateAdded.map { $0.formatted(.dateTime.month(.abbreviated).year()) } ?? "" }
     /// For sorting by date added (tracks without a date sort last).
     var addedSort: Date { dateAdded ?? .distantPast }
     /// Share of the 12 tag categories filled. Approximated from the tag count until the

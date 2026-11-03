@@ -17,21 +17,22 @@ struct LibraryView: View {
     @SceneStorage("libraryColumns") private var columns = TableColumnCustomization<Track>()
 
     private var rows: [Track] {
-        store.tracks.filter { t in
-            let step = store.nextStep[t.id] ?? .none
-            switch filter {
-            case .all: break
-            case .review: if step != .needsReview { return false }
-            case .tags: if step != .needsTags { return false }
-            case .none: if step != .none { return false }
-            }
-            return query.isEmpty
-                || t.title.display.localizedCaseInsensitiveContains(query)
-                || t.artist.localizedCaseInsensitiveContains(query)
-                || t.genre.localizedCaseInsensitiveContains(query)
-                || t.comments.tags.contains { $0.localizedCaseInsensitiveContains(query) }
+        store.tracks.filter(matches).sorted(using: sortOrder)
+    }
+
+    private func matches(_ t: Track) -> Bool {
+        let step: NextStep = store.nextStep[t.id] ?? .none
+        switch filter {
+        case .all: break
+        case .review: if step != .needsReview { return false }
+        case .tags: if step != .needsTags { return false }
+        case .none: if step != .none { return false }
         }
-        .sorted(using: sortOrder)
+        if query.isEmpty { return true }
+        if t.titleText.localizedCaseInsensitiveContains(query) { return true }
+        if t.artist.localizedCaseInsensitiveContains(query) { return true }
+        if t.genre.localizedCaseInsensitiveContains(query) { return true }
+        return t.tagsText.localizedCaseInsensitiveContains(query)
     }
 
     private func count(_ f: LibraryFilter) -> Int {
@@ -76,63 +77,25 @@ struct LibraryView: View {
         .background(Theme.window)
     }
 
+    // Each column is its own property so the compiler type-checks them one at a time.
+
     private var table: some View {
         Table(rows, selection: $selection, sortOrder: $sortOrder, columnCustomization: $columns) {
-            TableColumn("") { (t: Track) in
-                let on = selection.contains(t.id)
-                Image(systemName: on ? "checkmark.square.fill" : "square")
-                    .foregroundStyle(on ? Theme.orange : Theme.muted)
-                    .contentShape(Rectangle())
-                    .onTapGesture { if on { selection.remove(t.id) } else { selection.insert(t.id) } }
-            }
-            .width(22).customizationID("check").disabledCustomizationBehavior(.all)
-
-            TableColumn("Art") { (t: Track) in
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(t.hasArtwork ? Theme.orange.opacity(0.35) : .clear)
-                    .overlay(RoundedRectangle(cornerRadius: 4).stroke(t.hasArtwork ? .clear : Theme.muted, lineWidth: 1))
-                    .frame(width: 22, height: 22)
-                    .help(t.hasArtwork ? "Has artwork" : "No album art")
-            }
-            .width(30).customizationID("art")
-
+            checkColumn
+            artColumn
+            titleColumn
+            artistColumn
+            genreColumn
+            bpmColumn
+            energyColumn
+            tagsColumn
             Group {
-            TableColumn("Title", value: \.title.display) { t in Text(t.title.display).lineLimit(1) }
-                .customizationID("title").disabledCustomizationBehavior(.visibility)
-            TableColumn("Artist", value: \.artist) { t in Text(t.artist).foregroundStyle(Theme.muted).lineLimit(1) }
-                .customizationID("artist")
-            TableColumn("Genre", value: \.genre).width(min: 70, ideal: 90).customizationID("genre")
-            TableColumn("BPM", value: \.bpm) { t in Text(t.bpm > 0 ? "\(t.bpm)" : "").monospacedDigit() }
-                .width(44).customizationID("bpm")
-            TableColumn("Energy", value: \.rating) { t in
-                Text(t.energy > 0 ? "\(t.energy)" : "–").font(.system(size: 12, weight: .bold))
-                    .frame(width: 22, height: 22)
-                    .background(RoundedRectangle(cornerRadius: 6).fill(Theme.energyColor(t.energy)))
-                    .foregroundStyle(Color(hex: 0x0B0C0D))
-            }
-            .width(56).customizationID("energy").defaultVisibility(.hidden)
-            }
-            Group {
-            TableColumn("Tags") { t in
-                Text(t.comments.tags.joined(separator: " · ")).font(.system(size: 11)).foregroundStyle(Theme.muted).lineLimit(1)
-            }
-            .customizationID("tags")
-            TableColumn("Added", value: \.addedSort) { t in
-                Text(t.dateAdded.map { $0.formatted(.dateTime.month(.abbreviated).year()) } ?? "")
-                    .font(.system(size: 12)).foregroundStyle(Theme.muted)
-            }
-            .width(76).customizationID("added")
-            TableColumn("Tagged", value: \.taggedPercent) { t in
-                Text("\(t.taggedPercent)%").font(.system(size: 12)).monospacedDigit()
-                    .foregroundStyle(t.taggedPercent >= 50 ? Theme.text2 : Theme.muted)
-            }
-            .width(56).customizationID("tagged")
-            TableColumn("Next step") { t in NextStepPill(step: store.nextStep[t.id] ?? .none) }
-                .width(116).customizationID("next")
-            TableColumn("Remixer", value: \.composer).customizationID("remixer").defaultVisibility(.hidden)
-            TableColumn("Source", value: \.grouping).width(56).customizationID("source").defaultVisibility(.hidden)
-            TableColumn("Released", value: \.year) { t in Text(t.year > 0 ? "\(t.year)" : "") }
-                .width(64).customizationID("released").defaultVisibility(.hidden)
+                addedColumn
+                taggedColumn
+                nextColumn
+                remixerColumn
+                sourceColumn
+                releasedColumn
             }
         }
         .onExitCommand { selection.removeAll() }
@@ -140,6 +103,73 @@ struct LibraryView: View {
         .background(RoundedRectangle(cornerRadius: 12).fill(Theme.card))
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.border))
+    }
+
+    private var checkColumn: some TableColumnContent<Track, KeyPathComparator<Track>> {
+        TableColumn("") { (t: Track) in CheckCell(on: selection.contains(t.id)) { toggle(t.id) } }
+            .width(22).customizationID("check").disabledCustomizationBehavior(.all)
+    }
+    private func toggle(_ id: String) {
+        if selection.contains(id) { selection.remove(id) } else { selection.insert(id) }
+    }
+    private var artColumn: some TableColumnContent<Track, KeyPathComparator<Track>> {
+        TableColumn("Art") { (t: Track) in ArtCell(has: t.hasArtwork) }
+            .width(30).customizationID("art")
+    }
+    private var titleColumn: some TableColumnContent<Track, KeyPathComparator<Track>> {
+        TableColumn("Title", value: \Track.titleText) { (t: Track) in Text(t.titleText).lineLimit(1) }
+            .customizationID("title").disabledCustomizationBehavior(.visibility)
+    }
+    private var artistColumn: some TableColumnContent<Track, KeyPathComparator<Track>> {
+        TableColumn("Artist", value: \Track.artist) { (t: Track) in Text(t.artist).foregroundStyle(Theme.muted).lineLimit(1) }
+            .customizationID("artist")
+    }
+    private var genreColumn: some TableColumnContent<Track, KeyPathComparator<Track>> {
+        TableColumn("Genre", value: \Track.genre) { (t: Track) in Text(t.genre).lineLimit(1) }
+            .width(min: 70, ideal: 90).customizationID("genre")
+    }
+    private var bpmColumn: some TableColumnContent<Track, KeyPathComparator<Track>> {
+        TableColumn("BPM", value: \Track.bpm) { (t: Track) in Text(t.bpmText).monospacedDigit() }
+            .width(44).customizationID("bpm")
+    }
+    private var energyColumn: some TableColumnContent<Track, KeyPathComparator<Track>> {
+        TableColumn("Energy", value: \Track.rating) { (t: Track) in EnergyCell(energy: t.energy) }
+            .width(56).customizationID("energy").defaultVisibility(.hidden)
+    }
+    private var tagsColumn: some TableColumnContent<Track, KeyPathComparator<Track>> {
+        TableColumn("Tags") { (t: Track) in
+            Text(t.tagsText).font(.system(size: 11)).foregroundStyle(Theme.muted).lineLimit(1)
+        }
+        .customizationID("tags")
+    }
+    private var addedColumn: some TableColumnContent<Track, KeyPathComparator<Track>> {
+        TableColumn("Added", value: \Track.addedSort) { (t: Track) in
+            Text(t.addedText).font(.system(size: 12)).foregroundStyle(Theme.muted)
+        }
+        .width(76).customizationID("added")
+    }
+    private var taggedColumn: some TableColumnContent<Track, KeyPathComparator<Track>> {
+        TableColumn("Tagged", value: \Track.taggedPercent) { (t: Track) in
+            Text("\(t.taggedPercent)%").font(.system(size: 12)).monospacedDigit()
+                .foregroundStyle(t.taggedPercent >= 50 ? Theme.text2 : Theme.muted)
+        }
+        .width(56).customizationID("tagged")
+    }
+    private var nextColumn: some TableColumnContent<Track, KeyPathComparator<Track>> {
+        TableColumn("Next step") { (t: Track) in NextStepPill(step: store.nextStep[t.id] ?? .none) }
+            .width(116).customizationID("next")
+    }
+    private var remixerColumn: some TableColumnContent<Track, KeyPathComparator<Track>> {
+        TableColumn("Remixer", value: \Track.composer) { (t: Track) in Text(t.composer).lineLimit(1) }
+            .customizationID("remixer").defaultVisibility(.hidden)
+    }
+    private var sourceColumn: some TableColumnContent<Track, KeyPathComparator<Track>> {
+        TableColumn("Source", value: \Track.grouping) { (t: Track) in Text(t.grouping) }
+            .width(56).customizationID("source").defaultVisibility(.hidden)
+    }
+    private var releasedColumn: some TableColumnContent<Track, KeyPathComparator<Track>> {
+        TableColumn("Released", value: \Track.year) { (t: Track) in Text(t.year > 0 ? String(t.year) : "") }
+            .width(64).customizationID("released").defaultVisibility(.hidden)
     }
 
     private var selectionBar: some View {
@@ -184,6 +214,38 @@ struct LibraryView: View {
         .padding(.horizontal, 24).padding(.vertical, 10)
         .background(Theme.panel)
         .overlay(alignment: .top) { Rectangle().fill(Theme.border).frame(height: 1) }
+    }
+}
+
+struct CheckCell: View {
+    let on: Bool
+    let toggle: () -> Void
+    var body: some View {
+        Image(systemName: on ? "checkmark.square.fill" : "square")
+            .foregroundStyle(on ? Theme.orange : Theme.muted)
+            .contentShape(Rectangle())
+            .onTapGesture(perform: toggle)
+    }
+}
+
+struct ArtCell: View {
+    let has: Bool
+    var body: some View {
+        RoundedRectangle(cornerRadius: 4)
+            .fill(has ? Theme.orange.opacity(0.35) : Color.clear)
+            .overlay(RoundedRectangle(cornerRadius: 4).stroke(has ? Color.clear : Theme.muted, lineWidth: 1))
+            .frame(width: 22, height: 22)
+            .help(has ? "Has artwork" : "No album art")
+    }
+}
+
+struct EnergyCell: View {
+    let energy: Int
+    var body: some View {
+        Text(energy > 0 ? String(energy) : "–").font(.system(size: 12, weight: .bold))
+            .frame(width: 22, height: 22)
+            .background(RoundedRectangle(cornerRadius: 6).fill(Theme.energyColor(energy)))
+            .foregroundStyle(Color(hex: 0x0B0C0D))
     }
 }
 
