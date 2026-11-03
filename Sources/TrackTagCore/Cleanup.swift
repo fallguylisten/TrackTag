@@ -73,7 +73,8 @@ public enum Cleanup {
         }
 
         let flags = pull(#"\s*!([^!]+)!"#)
-        let notes = pull(#"\s*<([^>]*)>"#)
+        // Notes may contain ">" (e.g. <108 > 127>), so a note ends at ">" followed by another note, a flag or the end.
+        let notes = pull(#"\s*<([^<]*?)>(?=\s*(?:<|!|$))"#)
         var version = pull(#"\s*\[([^\]]+)\]"#).first ?? ""
 
         // Version-like text in ( ), e.g. "(Loft Mix)" -> [Loft Mix]; other ( ) stay as part of the name.
