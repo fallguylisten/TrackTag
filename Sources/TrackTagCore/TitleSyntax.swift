@@ -6,7 +6,7 @@ import Foundation
 /// - `!poor quality!` review flags: kept in Music and the file tags (searchable in
 ///   Rekordbox/Serato) but hidden in TrackTag's own title displays; the flag shows
 ///   in the "Why it's here" / Next step columns instead.
-public struct Title: Equatable {
+public struct Title: Hashable {
     public var raw: String
 
     public init(_ raw: String) { self.raw = raw }

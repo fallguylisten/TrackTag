@@ -2,7 +2,7 @@ import Foundation
 
 /// Sound ceiling = highest frequency (kHz) with real content, from the spectrogram.
 /// Graded per file type with one cut-off each (Settings → Review Queue sliders).
-public enum FileKind: String, Codable { case mp3, wav, other }
+public enum FileKind: String, Codable, Hashable { case mp3, wav, other }
 
 public enum SoundGrade: String, Codable { case good, poor, unknown }
 

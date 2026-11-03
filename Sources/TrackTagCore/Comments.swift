@@ -2,7 +2,7 @@ import Foundation
 
 /// The Comments field: `| Tag | Tag | ... | // free-text note`.
 /// Smart playlists match `| Tag |`, so the leading and trailing pipes always stay.
-public struct Comments: Equatable {
+public struct Comments: Hashable {
     public var tags: [String]
     public var note: String
 
