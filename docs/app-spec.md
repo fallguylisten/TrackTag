@@ -150,3 +150,6 @@ Every button with a shortcut shows a small keycap after its label (same style ev
 - Review flags: `!text!` e.g. `King Kunta !poor quality!`, `Ballin !review!` (was {!…!} / {REVIEW}). Written to the title in Music and the file tags (searchable in Rekordbox/Serato), but TrackTag hides them in its own title displays and shows the flag only in the "Why it's here" / Next step columns. Files are not renamed (Keep organized is off), so annotations don't appear in file names.
 - tracktag-syntax.js converts existing titles ({!x!}→!x!, {REVIEW}→!review!, {x}→<x>), with undo. Run after longtail.json / restore-flags.json, which still write the old form.
 - Review side panel actions (Find/Make replacement/Delete, Not a match) are pinned to the bottom of the panel.
+
+## Replace: verified (Nov 3)
+Relinking a Music track from an MP3 to a WAV works and keeps the same track (ID, comment, rating, plays, playlists). Done with AppleScript `set location`; JXA can't. Writes right after adding a file can briefly fail (-54) while Music imports it, so retry.
