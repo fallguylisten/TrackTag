@@ -75,7 +75,8 @@ struct FilterChip: View {
     let action: () -> Void
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 6) { Text(label); Text(count.formatted()).foregroundStyle(selected ? accentText : Theme.muted) }
+            HStack(spacing: 6) { Text(label); Text(count.formatted()).monospacedDigit().foregroundStyle(selected ? accentText : Theme.muted) }
+                .fixedSize()
                 .font(.system(size: 13))
                 .padding(.horizontal, 12).padding(.vertical, 7)
                 .foregroundStyle(selected ? accentText : Theme.text2)

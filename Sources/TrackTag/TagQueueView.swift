@@ -79,6 +79,9 @@ struct TagQueueView: View {
                 }
             }
             .listStyle(.plain)
+            // Keep the columns from shifting when a filter changes the row count and the scrollbar
+            // appears or disappears: the scrollbar sits over the list instead of taking width.
+            .scrollIndicators(.never)
             .scrollContentBackground(.hidden)
             .background(RoundedRectangle(cornerRadius: 12).fill(Theme.card))
             .clipShape(RoundedRectangle(cornerRadius: 12))
