@@ -10,3 +10,4 @@
 - The user can't see this sandbox: anything they need goes in the repo or the reply.
 - Relink test PASSED (Nov 3): Music can point an existing track at a different file, MP3 → WAV, keeping persistent ID, comment, rating, play count and playlists. Use AppleScript for this (`set location of (first track of library playlist 1 whose persistent ID is "…") to POSIX file "…"`); the JXA form fails with "Can't get object". So Replace = relink the same track, no copy-fields fallback needed.
 - After Music adds a file, it may still be importing: writes fail with -54 "File permission error" for a moment. Wait and retry.
+- Grouping values (Nov 3): RIP (MediaHuman rip), DL (artist download), OWN (the user's own productions/mashups), MIX (long mixes, excluded). CDQ/LQ/HQ are retired. Sound quality is the separate spectrogram grade, not Grouping.
