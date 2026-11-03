@@ -63,6 +63,7 @@ final class LibraryStore: ObservableObject {
                 let risk = Dictionary(uniqueKeysWithValues: t.map { ($0.id, $0.fileAtRisk) })
                 await MainActor.run {
                     self.tracks = t
+                    self.rebuildCounts()
                     self.recompute(risk: risk)
                     self.loading = false
                 }
@@ -83,7 +84,7 @@ final class LibraryStore: ObservableObject {
                 titleFlags: t.title.flags, grade: .unknown, fileAtRisk: risk[t.id] ?? false,
                 isNew: (t.dateAdded ?? .distantPast) > monthAgo,
                 notReviewed: false,
-                categoriesFilled: min(12, t.comments.tags.count), hasArtwork: t.hasArtwork)
+                categoriesFilled: t.stopsFilled, hasArtwork: t.hasArtwork)
             if queues.reviewQueue.contains(t.id) { step = .needsReview }
             else if step == .none && queues.tagQueue.contains(t.id) { step = .needsTags }
             out[t.id] = step
@@ -131,6 +132,38 @@ final class LibraryStore: ObservableObject {
             tracks[i].grouping = source; tracks[i].year = year
             recompute()
             saveMessage = "Saved \(values.count) field\(values.count == 1 ? "" : "s") to Music"
+        } catch {
+            saveMessage = "Couldn’t save: \(error.localizedDescription)"
+        }
+    }
+
+    /// How many tracks use each tag (for chip size and order). Rebuilt when tracks change.
+    @Published var tagCounts: [String: Int] = [:]
+
+    func rebuildCounts() {
+        var c: [String: Int] = [:]
+        for t in tracks { for tag in t.comments.tags { c[tag, default: 0] += 1 } }
+        tagCounts = c
+    }
+
+    /// Saves tags + energy through Music (Comments, Rating, and the Genre field = main style),
+    /// then marks the track reviewed.
+    func saveTags(_ id: String, comments: Comments, rating: Int) {
+        guard let i = tracks.firstIndex(where: { $0.id == id }) else { return }
+        let rendered = comments.rendered(categoryOrder: TagStops.writeRank)
+        let genre = TagStops.genreField(comments)
+        var values: [MusicWriter.Field: Any] = [:]
+        if rendered != tracks[i].comments.rendered(categoryOrder: TagStops.writeRank) { values[.comment] = rendered }
+        if rating != tracks[i].rating { values[.rating] = rating }
+        if !genre.isEmpty && genre != tracks[i].genre { values[.genre] = genre }
+        do {
+            if !values.isEmpty { try MusicWriter().write(trackID: id, values) }
+            tracks[i].comments = Comments(parsing: rendered)
+            tracks[i].rating = rating
+            if !genre.isEmpty { tracks[i].genre = genre }
+            saveMessage = values.isEmpty ? nil : "Saved \(tracks[i].titleText)"
+            rebuildCounts()
+            markReviewed(id)
         } catch {
             saveMessage = "Couldn’t save: \(error.localizedDescription)"
         }
@@ -208,6 +241,7 @@ struct RootView: View {
             switch tab {
             case .library: LibraryView()
             case .tagQueue: TagQueueView(goToTag: { tab = .tag })
+            case .tag: TagView()
             default:
                 Text("\(tab.rawValue) — coming next").foregroundStyle(Theme.muted)
                     .frame(maxWidth: .infinity, maxHeight: .infinity).background(Theme.window)

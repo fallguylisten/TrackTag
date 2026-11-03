@@ -28,9 +28,9 @@ struct Track: Identifiable, Hashable {
     var addedText: String { dateAdded.map { $0.formatted(.dateTime.month(.abbreviated).year()) } ?? "" }
     /// For sorting by date added (tracks without a date sort last).
     var addedSort: Date { dateAdded ?? .distantPast }
-    /// Share of the 12 tag categories filled. Approximated from the tag count until the
-    /// app has the category list; never above 100.
-    var taggedPercent: Int { min(100, comments.tags.count * 100 / 12) }
+    /// Tag screen stops (of 12) that have something on this track.
+    var stopsFilled: Int { TagStops.filledCount(comments) }
+    var taggedPercent: Int { stopsFilled * 100 / 12 }
     /// File in the Trash, in Downloads, or missing.
     var fileAtRisk: Bool {
         guard let url = fileURL else { return true }
