@@ -69,7 +69,9 @@ struct TagQueueView: View {
                     chip(.recheck, QueueReason.recheck.rawValue)
                     chip(.newImport, QueueReason.newImport.rawValue)
                     chip(.sent, QueueReason.sent.rawValue)
+                    chip(.missing, QueueReason.missing.rawValue)
                     chip(.incomplete, QueueReason.incomplete.rawValue)
+                    chip(.notReviewed, QueueReason.notReviewed.rawValue)
                     chip(.reappraise, QueueReason.reappraise.rawValue)
                 }
             }
@@ -129,7 +131,9 @@ struct QueueRow: View {
         case .recheck: return Theme.orange
         case .newImport: return Theme.teal
         case .sent: return Theme.tealText
+        case .missing: return Theme.orangeText
         case .incomplete: return Color(hex: 0x8E9198)
+        case .notReviewed: return Theme.text2
         case .reappraise: return Color(hex: 0xB39DFF)
         }
     }

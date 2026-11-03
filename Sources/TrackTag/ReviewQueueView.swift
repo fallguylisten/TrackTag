@@ -204,7 +204,14 @@ struct ReviewPanel: View {
     }
 
     private func banner(_ m: String) -> some View {
-        Text(m).font(.system(size: 13)).foregroundStyle(Color(hex: 0x7FE0A0))
+        HStack(alignment: .top) {
+            Text(m)
+            if store.lastReplace != nil {
+                Spacer()
+                Button("Undo") { store.undoLastReplace() }.buttonStyle(.bordered).controlSize(.small)
+            }
+        }
+        .font(.system(size: 13)).foregroundStyle(Color(hex: 0x7FE0A0))
             .padding(10).frame(maxWidth: .infinity, alignment: .leading)
             .background(RoundedRectangle(cornerRadius: 10).fill(Color(hex: 0x11261A)))
             .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color(hex: 0x1F5A3A)))

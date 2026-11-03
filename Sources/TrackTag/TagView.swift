@@ -304,7 +304,7 @@ struct TagView: View {
         let nextIdx = cur + delta
         let target: String? = ids.indices.contains(nextIdx) ? ids[nextIdx] : nil
         if let id = editingID {
-            if dirty { store.saveTags(id, comments: comments, rating: rating) } else { store.markReviewed(id) }
+            if dirty { store.saveTags(id, comments: comments, rating: rating) } else { store.leaveTrack(id) }
         }
         if let target { store.currentID = target }
         keysFocused = true

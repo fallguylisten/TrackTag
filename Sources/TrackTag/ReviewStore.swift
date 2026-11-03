@@ -5,6 +5,13 @@ enum ReviewReason: String {
     case flagged = "Flagged", poor = "Poor quality", atRisk = "File at risk", sent = "Sent from Library", replaced = "Replaced"
 }
 
+struct ReplaceUndo {
+    let trackID: String
+    let originalFile: URL?
+    let parkedFile: URL?
+    let before: Track
+}
+
 struct ReviewItem: Identifiable {
     let id: String
     let number: Int
@@ -105,6 +112,7 @@ extension LibraryStore {
         for f in title.flags where f.lowercased() != "review" { title = title.removing(flag: f) }
         if let flag, !flag.isEmpty { title = title.adding(flag: flag) }
         do {
+            UndoLog.record(id: id, title: tracks[i].titleText, old: ["name": tracks[i].title.raw])
             try MusicWriter().write(trackID: id, [.name: title.raw])
             tracks[i].title = title
             if flag == nil { queues.reviewQueue.remove(id); queues.save() }
@@ -134,18 +142,28 @@ extension LibraryStore {
             try writer.relink(trackID: id, to: target)
 
             // Old file goes to ~/Music/TrackTag/Replaced (kept 30 days).
+            var parked: URL?
             if let old = t.fileURL, fm.fileExists(atPath: old.path), old.path != target.path {
                 let bin = home.appendingPathComponent("Music/TrackTag/Replaced", isDirectory: true)
                 try fm.createDirectory(at: bin, withIntermediateDirectories: true)
-                try? fm.moveItem(at: old, to: bin.appendingPathComponent("\(t.id) \(old.lastPathComponent)"))
+                let dest = bin.appendingPathComponent("\(t.id) \(old.lastPathComponent)")
+                if (try? fm.moveItem(at: old, to: dest)) != nil { parked = dest }
             }
+            lastReplace = ReplaceUndo(trackID: id, originalFile: t.fileURL, parkedFile: parked, before: t)
+
+            // Source follows where the new file lives: the DL crate means DL, the rip folder RIP.
+            let dl = (settings.dlFolder as NSString).expandingTildeInPath
+            let rip = (settings.ripFolder as NSString).expandingTildeInPath
+            let source = target.path.hasPrefix(dl) ? "DL" : (target.path.hasPrefix(rip) ? "RIP" : t.grouping)
 
             // Write the tags into the new file (Music stores them, this pushes them into the file) and drop flags.
             let cleanTitle = t.title.removing(flag: nil)
             let keepReview = t.title.flags.contains { $0.lowercased() == "review" } ? cleanTitle.adding(flag: "review") : cleanTitle
+            UndoLog.record(id: id, title: t.titleText, old: ["name": t.title.raw, "grouping": t.grouping])
             try writer.write(trackID: id, [.name: keepReview.raw, .artist: t.artist, .composer: t.composer,
                                            .comment: t.comments.rendered(categoryOrder: TagStops.writeRank),
-                                           .genre: t.genre, .grouping: t.grouping, .rating: t.rating, .year: t.year])
+                                           .genre: t.genre, .grouping: source, .rating: t.rating, .year: t.year])
+            tracks[i].grouping = source
 
             tracks[i].fileURL = target
             tracks[i].title = keepReview
@@ -156,9 +174,31 @@ extension LibraryStore {
             replacedThisSession.insert(id)
             recompute()
             reviewMessage = "Replaced \(t.titleText). In Rekordbox, Relocate it; in Serato, rescan."
+                + (FileTagCheck.titleMatches(target, expected: keepReview.raw) ? "" : " The new file’s title tag didn’t update; check it in Music.")
         } catch {
             reviewMessage = "Couldn’t replace: \(error.localizedDescription)"
         }
+    }
+
+    /// Puts the last replace back: old file returns to where it was and the track points at it again.
+    func undoLastReplace() {
+        guard let u = lastReplace else { return }
+        let fm = FileManager.default
+        do {
+            if let parked = u.parkedFile, let orig = u.originalFile, !fm.fileExists(atPath: orig.path) {
+                try fm.moveItem(at: parked, to: orig)
+            }
+            if let orig = u.originalFile { try MusicWriter().relink(trackID: u.trackID, to: orig) }
+            try MusicWriter().write(trackID: u.trackID, [.name: u.before.title.raw, .grouping: u.before.grouping])
+            if let i = tracks.firstIndex(where: { $0.id == u.trackID }) {
+                tracks[i].fileURL = u.originalFile; tracks[i].title = u.before.title
+                tracks[i].grouping = u.before.grouping; tracks[i].kind = u.before.kind
+            }
+            replacedThisSession.remove(u.trackID)
+            lastReplace = nil
+            recompute()
+            reviewMessage = "Undone: \(u.before.titleText) is back on its old file."
+        } catch { reviewMessage = "Couldn’t undo: \(error.localizedDescription)" }
     }
 
     /// Removes the track from Music and moves its file to ~/Music/TrackTag/Deleted.
@@ -166,6 +206,8 @@ extension LibraryStore {
         guard let i = tracks.firstIndex(where: { $0.id == id }) else { return }
         let t = tracks[i]
         do {
+            UndoLog.record(id: id, title: t.titleText, old: ["deleted": true, "file": t.fileURL?.path ?? "",
+                                                              "comment": t.comments.rendered(categoryOrder: TagStops.writeRank)])
             try MusicWriter().delete(trackID: id)
             if let f = t.fileURL, FileManager.default.fileExists(atPath: f.path) {
                 let bin = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Music/TrackTag/Deleted", isDirectory: true)

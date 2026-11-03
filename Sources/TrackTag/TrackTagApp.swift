@@ -43,7 +43,8 @@ enum QueueKind { case review, tags }
 
 enum QueueReason: String {
     case recheck = "Re-check tags", newImport = "New import", sent = "Sent from Library",
-         incomplete = "Not fully tagged", reappraise = "Re-appraise (oldest)"
+         missing = "Incomplete", incomplete = "Not fully tagged", notReviewed = "Not reviewed yet",
+         reappraise = "Re-appraise (oldest)"
 }
 
 @MainActor
@@ -67,6 +68,7 @@ final class LibraryStore: ObservableObject {
     @Published var reviewMessage: String?
     @Published var bulkProgress: (done: Int, total: Int)?
     @Published var bulkMessage: String?
+    @Published var lastReplace: ReplaceUndo?
     var cutoffs: GradeCutoffs { settings.cutoffs }
     var scanCache = ScanCache.load()
 
@@ -100,7 +102,7 @@ final class LibraryStore: ObservableObject {
             var step = r.nextStep(
                 titleFlags: t.title.flags, grade: reviewGrade(t), fileAtRisk: settings.flagAtRisk && (risk[t.id] ?? false),
                 isNew: (t.dateAdded ?? .distantPast) > monthAgo,
-                notReviewed: false,
+                notReviewed: !queues.reviewed.contains(t.id),
                 categoriesFilled: t.stopsFilled, hasArtwork: t.hasArtwork || !settings.noArtNeedsTags)
             if queues.reviewQueue.contains(t.id) { step = .needsReview }
             else if step == .none && queues.tagQueue.contains(t.id) { step = .needsTags }
@@ -125,7 +127,9 @@ final class LibraryStore: ObservableObject {
         for t in open where t.title.flags.contains(where: { $0.lowercased() == "review" }) { add(t, .recheck) }
         for t in open where (t.dateAdded ?? .distantPast) > monthAgo { add(t, .newImport) }
         for t in open where queues.tagQueue.contains(t.id) { add(t, .sent) }
-        for t in open where nextStep[t.id] == .needsTags { add(t, .incomplete) }
+        for t in open where queues.incomplete.contains(t.id) { add(t, .missing) }
+        for t in open where t.stopsFilled * 100 / 12 < settings.needsTagsPercent { add(t, .incomplete) }
+        for t in open { add(t, .notReviewed) }
         // Re-appraise: the 10 tracks touched longest ago, even if reviewed before.
         let oldest = tracks.sorted { ($0.dateModified ?? .distantPast) < ($1.dateModified ?? .distantPast) }.prefix(settings.reappraiseCount)
         for t in oldest { add(t, .reappraise) }
@@ -144,11 +148,13 @@ final class LibraryStore: ObservableObject {
         if year != t.year { values[.year] = year }
         guard !values.isEmpty else { saveMessage = "Nothing changed"; return }
         do {
+            UndoLog.record(id: id, title: t.titleText, old: oldValues(t, values.keys))
             try MusicWriter().write(trackID: id, values)
             tracks[i].title = Title(title); tracks[i].artist = artist; tracks[i].composer = remixer
             tracks[i].grouping = source; tracks[i].year = year
             recompute()
             saveMessage = "Saved \(values.count) field\(values.count == 1 ? "" : "s") to Music"
+                + (FileTagCheck.titleMatches(t.fileURL, expected: title) ? "" : " — but the file’s own title tag didn’t update; check it in Music")
         } catch {
             saveMessage = "Couldn’t save: \(error.localizedDescription)"
         }
@@ -174,15 +180,49 @@ final class LibraryStore: ObservableObject {
         if rating != tracks[i].rating { values[.rating] = rating }
         if !genre.isEmpty && genre != tracks[i].genre { values[.genre] = genre }
         do {
-            if !values.isEmpty { try MusicWriter().write(trackID: id, values) }
+            if !values.isEmpty {
+                UndoLog.record(id: id, title: tracks[i].titleText, old: oldValues(tracks[i], values.keys))
+                try MusicWriter().write(trackID: id, values)
+            }
             tracks[i].comments = Comments(parsing: rendered)
             tracks[i].rating = rating
             if !genre.isEmpty { tracks[i].genre = genre }
             saveMessage = values.isEmpty ? nil : "Saved \(tracks[i].titleText)"
             rebuildCounts()
-            markReviewed(id)
+            leaveTrack(id)
         } catch {
             saveMessage = "Couldn’t save: \(error.localizedDescription)"
+        }
+    }
+
+    /// Old values of the fields about to be written, for the undo log (keys match the scripts).
+    func oldValues(_ t: Track, _ fields: Dictionary<MusicWriter.Field, Any>.Keys) -> [String: Any] {
+        var o: [String: Any] = [:]
+        for f in fields {
+            switch f {
+            case .name: o["name"] = t.title.raw
+            case .artist: o["artist"] = t.artist
+            case .composer: o["composer"] = t.composer
+            case .comment: o["comment"] = t.comments.rendered(categoryOrder: TagStops.writeRank)
+            case .genre: o["genre"] = t.genre
+            case .grouping: o["grouping"] = t.grouping
+            case .rating: o["rating"] = t.rating
+            case .year: o["year"] = t.year
+            }
+        }
+        return o
+    }
+
+    /// Leaving a track on the Tag screen: reviewed if Genre and Mood are set, otherwise it stays
+    /// in the Tag Queue as "Incomplete".
+    func leaveTrack(_ id: String) {
+        guard let t = tracks.first(where: { $0.id == id }) else { return }
+        let cats = Set(t.comments.tags.compactMap { TagStops.categoryOf[$0] })
+        if cats.contains("Family") && (cats.contains("Mood") || cats.contains("Theme")) {
+            queues.incomplete.remove(id)
+            markReviewed(id)
+        } else {
+            queues.incomplete.insert(id); queues.save(); recompute()
         }
     }
 

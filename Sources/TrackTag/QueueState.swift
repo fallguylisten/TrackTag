@@ -3,9 +3,19 @@ import Foundation
 /// TrackTag's only local state: which tracks you've sent to each queue and which you've
 /// reviewed. Keyed by Music persistent ID, saved in ~/Library/Application Support/TrackTag.
 struct QueueState: Codable {
+    init() {}
+    init(from d: Decoder) throws {
+        let c = try d.container(keyedBy: CodingKeys.self)
+        tagQueue = try c.decodeIfPresent(Set<String>.self, forKey: .tagQueue) ?? []
+        reviewQueue = try c.decodeIfPresent(Set<String>.self, forKey: .reviewQueue) ?? []
+        reviewed = try c.decodeIfPresent(Set<String>.self, forKey: .reviewed) ?? []
+        incomplete = try c.decodeIfPresent(Set<String>.self, forKey: .incomplete) ?? []
+    }
+
     var tagQueue: Set<String> = []
     var reviewQueue: Set<String> = []
     var reviewed: Set<String> = []
+    var incomplete: Set<String> = []
 
     private static var url: URL {
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
