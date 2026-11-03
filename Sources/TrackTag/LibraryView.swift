@@ -106,14 +106,14 @@ struct LibraryView: View {
     }
 
     private var checkColumn: some TableColumnContent<Track, KeyPathComparator<Track>> {
-        TableColumn("") { (t: Track) in CheckCell(on: selection.contains(t.id)) { toggle(t.id) } }
+        TableColumn("", sortUsing: KeyPathComparator(\Track.titleText)) { (t: Track) in CheckCell(on: selection.contains(t.id)) { toggle(t.id) } }
             .width(22).customizationID("check").disabledCustomizationBehavior(.all)
     }
     private func toggle(_ id: String) {
         if selection.contains(id) { selection.remove(id) } else { selection.insert(id) }
     }
     private var artColumn: some TableColumnContent<Track, KeyPathComparator<Track>> {
-        TableColumn("Art") { (t: Track) in ArtCell(has: t.hasArtwork) }
+        TableColumn("Art", sortUsing: KeyPathComparator(\Track.artSort)) { (t: Track) in ArtCell(has: t.hasArtwork) }
             .width(30).customizationID("art")
     }
     private var titleColumn: some TableColumnContent<Track, KeyPathComparator<Track>> {
@@ -137,7 +137,7 @@ struct LibraryView: View {
             .width(56).customizationID("energy").defaultVisibility(.hidden)
     }
     private var tagsColumn: some TableColumnContent<Track, KeyPathComparator<Track>> {
-        TableColumn("Tags") { (t: Track) in
+        TableColumn("Tags", sortUsing: KeyPathComparator(\Track.tagsText)) { (t: Track) in
             Text(t.tagsText).font(.system(size: 11)).foregroundStyle(Theme.muted).lineLimit(1)
         }
         .customizationID("tags")
@@ -156,7 +156,7 @@ struct LibraryView: View {
         .width(56).customizationID("tagged")
     }
     private var nextColumn: some TableColumnContent<Track, KeyPathComparator<Track>> {
-        TableColumn("Next step") { (t: Track) in NextStepPill(step: store.nextStep[t.id] ?? .none) }
+        TableColumn("Next step", sortUsing: KeyPathComparator(\Track.titleText)) { (t: Track) in NextStepPill(step: store.nextStep[t.id] ?? .none) }
             .width(116).customizationID("next")
     }
     private var remixerColumn: some TableColumnContent<Track, KeyPathComparator<Track>> {

@@ -21,6 +21,7 @@ struct Track: Identifiable, Hashable {
 
     var energy: Int { rating / 20 }
     var titleText: String { title.display }
+    var artSort: Int { hasArtwork ? 1 : 0 }
     var bpmText: String { bpm > 0 ? String(bpm) : "" }
     var tagsText: String { comments.tags.joined(separator: " · ") }
     var addedText: String { dateAdded.map { $0.formatted(.dateTime.month(.abbreviated).year()) } ?? "" }
