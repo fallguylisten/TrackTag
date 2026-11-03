@@ -1,8 +1,21 @@
 import SwiftUI
+import AppKit
 import TrackTagCore
+
+/// Built as a Swift package, the app has no .app bundle yet, so macOS treats it as a
+/// background tool (no Dock icon, no window focus). Make it a regular app on launch.
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.windows.first?.makeKeyAndOrderFront(nil)
+    }
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+}
 
 @main
 struct TrackTagApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var store = LibraryStore()
     var body: some Scene {
         WindowGroup("TrackTag") {
