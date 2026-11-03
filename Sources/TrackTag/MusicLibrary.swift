@@ -55,6 +55,7 @@ struct LibraryReader {
         do { lib = try ITLibrary(apiVersion: "1.1") }
         catch { throw LibraryError.cannotOpen(error.localizedDescription) }
 
+        ArtworkCache.shared.library = lib
         return lib.allMediaItems.compactMap { item -> Track? in
             guard item.mediaKind == .kindSong else { return nil }
             let grouping = item.grouping ?? ""
