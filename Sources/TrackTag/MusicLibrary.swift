@@ -20,6 +20,18 @@ struct Track: Identifiable, Hashable {
     var hasArtwork: Bool
 
     var energy: Int { rating / 20 }
+    /// For sorting by date added (tracks without a date sort last).
+    var addedSort: Date { dateAdded ?? .distantPast }
+    /// Share of the 12 tag categories filled. Approximated from the tag count until the
+    /// app has the category list; never above 100.
+    var taggedPercent: Int { min(100, comments.tags.count * 100 / 12) }
+    /// File in the Trash, in Downloads, or missing.
+    var fileAtRisk: Bool {
+        guard let url = fileURL else { return true }
+        let path = url.path
+        if path.contains("/.Trash/") || path.contains("/Downloads/") { return true }
+        return !FileManager.default.fileExists(atPath: path)
+    }
 }
 
 enum LibraryError: Error, LocalizedError {

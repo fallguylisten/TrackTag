@@ -29,24 +29,114 @@ struct TrackTagApp: App {
 enum AppTab: String, CaseIterable, Identifiable {
     case settings = "Settings", review = "Review Queue", library = "Library", tagQueue = "Tag Queue", tag = "Tag"
     var id: String { rawValue }
+    var dot: Color {
+        switch self {
+        case .settings: return Theme.grey
+        case .review: return Theme.red
+        case .library: return Theme.orange
+        case .tagQueue, .tag: return Theme.teal
+        }
+    }
 }
+
+enum QueueKind { case review, tags }
 
 @MainActor
 final class LibraryStore: ObservableObject {
     @Published var tracks: [Track] = []
+    @Published var nextStep: [String: NextStep] = [:]
+    @Published var queues = QueueState.load()
     @Published var error: String?
     @Published var loading = false
+    let rules = NextStepRules()
 
     func load() {
         loading = true
         Task.detached {
             do {
                 let t = try LibraryReader().load()
-                await MainActor.run { self.tracks = t; self.loading = false }
+                let risk = Dictionary(uniqueKeysWithValues: t.map { ($0.id, $0.fileAtRisk) })
+                await MainActor.run {
+                    self.tracks = t
+                    self.recompute(risk: risk)
+                    self.loading = false
+                }
             } catch {
                 await MainActor.run { self.error = error.localizedDescription; self.loading = false }
             }
         }
+    }
+
+    private var risk: [String: Bool] = [:]
+
+    func recompute(risk newRisk: [String: Bool]? = nil) {
+        if let r = newRisk { risk = r }
+        let monthAgo = Date().addingTimeInterval(-30 * 86_400)
+        var out: [String: NextStep] = [:]
+        for t in tracks {
+            var step = rules.nextStep(
+                titleFlags: t.title.flags, grade: .unknown, fileAtRisk: risk[t.id] ?? false,
+                isNew: (t.dateAdded ?? .distantPast) > monthAgo,
+                notReviewed: false,
+                categoriesFilled: min(12, t.comments.tags.count), hasArtwork: t.hasArtwork)
+            if queues.reviewQueue.contains(t.id) { step = .needsReview }
+            else if step == .none && queues.tagQueue.contains(t.id) { step = .needsTags }
+            out[t.id] = step
+        }
+        nextStep = out
+    }
+
+    func send(_ ids: [String], to kind: QueueKind) {
+        switch kind {
+        case .review: queues.reviewQueue.formUnion(ids)
+        case .tags: queues.tagQueue.formUnion(ids)
+        }
+        queues.save()
+        recompute()
+    }
+}
+
+/// Header with the window's tab bar: Settings | Review Queue ‹ Library › Tag Queue › Tag
+struct TabBar: View {
+    @Binding var tab: AppTab
+    var body: some View {
+        HStack(spacing: 6) {
+            Text("TrackTag").font(.system(size: 15, weight: .semibold)).frame(width: 140, alignment: .leading)
+            Spacer()
+            tabButton(.settings, icon: "gearshape")
+            Rectangle().fill(Theme.borderStrong).frame(width: 1, height: 20).padding(.horizontal, 8)
+            tabButton(.review)
+            arrow("‹")
+            tabButton(.library, main: true)
+            arrow("›")
+            tabButton(.tagQueue)
+            arrow("›")
+            tabButton(.tag)
+            Spacer()
+            Color.clear.frame(width: 140, height: 1)
+        }
+        .padding(.horizontal, 24).padding(.vertical, 10)
+        .background(Theme.header)
+        .overlay(alignment: .bottom) { Rectangle().fill(Theme.border).frame(height: 1) }
+    }
+
+    private func arrow(_ a: String) -> some View { Text(a).font(.system(size: 16)).foregroundStyle(Color(hex: 0x5A5D63)) }
+
+    private func tabButton(_ t: AppTab, icon: String? = nil, main: Bool = false) -> some View {
+        let active = tab == t
+        return Button { tab = t } label: {
+            HStack(spacing: 8) {
+                if let icon { Image(systemName: icon).font(.system(size: 13)) }
+                else { Circle().fill(active ? Color(hex: 0x1A1206) : t.dot).frame(width: 7, height: 7) }
+                Text(t.rawValue).font(.system(size: 14, weight: active || main ? .semibold : .regular))
+            }
+            .padding(.horizontal, main ? 22 : 16).padding(.vertical, 8)
+            .foregroundStyle(active ? Color(hex: 0x1A1206) : Theme.text2)
+            .background(Capsule().fill(active ? t.dot : .clear))
+            .overlay(Capsule().stroke(main && !active ? Color(hex: 0x44464C) : .clear, lineWidth: 1.5))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -56,55 +146,15 @@ struct RootView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Picker("", selection: $tab) {
-                ForEach(AppTab.allCases) { Text($0.rawValue).tag($0) }
-            }
-            .pickerStyle(.segmented).labelsHidden().frame(maxWidth: 640).padding(12)
-            Divider()
+            TabBar(tab: $tab)
             switch tab {
             case .library: LibraryView()
-            default: Text("\(tab.rawValue) — coming next").frame(maxWidth: .infinity, maxHeight: .infinity)
+            default:
+                Text("\(tab.rawValue) — coming next").foregroundStyle(Theme.muted)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity).background(Theme.window)
             }
         }
+        .background(Theme.window)
         .task { store.load() }
-    }
-}
-
-/// First real screen: proves reading works on the real library.
-struct LibraryView: View {
-    @EnvironmentObject var store: LibraryStore
-    @State private var query = ""
-    private let rules = NextStepRules()
-    private let cutoffs = GradeCutoffs()
-
-    var filtered: [Track] {
-        query.isEmpty ? store.tracks : store.tracks.filter {
-            $0.title.display.localizedCaseInsensitiveContains(query) || $0.artist.localizedCaseInsensitiveContains(query)
-        }
-    }
-
-    var body: some View {
-        VStack(alignment: .leading) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("Library").font(.largeTitle.bold())
-                Text("\(store.tracks.count) tracks").foregroundStyle(.secondary)
-                Spacer()
-            }
-            TextField("Search the library", text: $query).textFieldStyle(.roundedBorder)
-            if let e = store.error { Text(e).foregroundStyle(.red) }
-            Table(filtered) {
-                TableColumn("Title") { Text($0.title.display) }
-                TableColumn("Artist", value: \.artist)
-                TableColumn("Genre", value: \.genre)
-                TableColumn("BPM") { Text($0.bpm > 0 ? "\($0.bpm)" : "") }.width(50)
-                TableColumn("Tags") { Text($0.comments.tags.joined(separator: " · ")).foregroundStyle(.secondary) }
-                TableColumn("Next step") { t in
-                    Text(rules.nextStep(titleFlags: t.title.flags,
-                                        grade: .unknown, fileAtRisk: false, isNew: false, notReviewed: false,
-                                        categoriesFilled: min(12, t.comments.tags.count), hasArtwork: t.hasArtwork).rawValue)
-                }.width(110)
-            }
-        }
-        .padding(24)
     }
 }
