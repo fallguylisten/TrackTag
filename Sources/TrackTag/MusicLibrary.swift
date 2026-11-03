@@ -19,6 +19,7 @@ struct Track: Identifiable, Hashable {
     var fileURL: URL?
     var kind: FileKind
     var hasArtwork: Bool
+    var bitrate: Int = 0
 
     var energy: Int { rating / 20 }
     var titleText: String { title.display }
@@ -74,7 +75,8 @@ struct LibraryReader {
                 dateModified: item.modifiedDate,
                 fileURL: item.location,
                 kind: ext == "mp3" ? .mp3 : (ext == "wav" ? .wav : .other),
-                hasArtwork: item.hasArtworkAvailable
+                hasArtwork: item.hasArtworkAvailable,
+                bitrate: item.bitrate
             )
         }
     }

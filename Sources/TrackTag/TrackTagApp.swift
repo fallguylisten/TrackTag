@@ -55,6 +55,14 @@ final class LibraryStore: ObservableObject {
     @Published var loading = false
     let rules = NextStepRules()
 
+    // Review Queue state
+    @Published var ceilings: [String: Double] = [:]      // track ID -> sound ceiling (kHz)
+    @Published var scanProgress: (done: Int, total: Int)?
+    @Published var replacedThisSession: Set<String> = []
+    @Published var reviewMessage: String?
+    var cutoffs = GradeCutoffs()
+    var scanCache = ScanCache.load()
+
     func load() {
         loading = true
         Task.detached {
@@ -64,6 +72,7 @@ final class LibraryStore: ObservableObject {
                 await MainActor.run {
                     self.tracks = t
                     self.rebuildCounts()
+                    self.startScan()
                     self.recompute(risk: risk)
                     self.loading = false
                 }
@@ -81,7 +90,7 @@ final class LibraryStore: ObservableObject {
         var out: [String: NextStep] = [:]
         for t in tracks {
             var step = rules.nextStep(
-                titleFlags: t.title.flags, grade: .unknown, fileAtRisk: risk[t.id] ?? false,
+                titleFlags: t.title.flags, grade: grade(t), fileAtRisk: risk[t.id] ?? false,
                 isNew: (t.dateAdded ?? .distantPast) > monthAgo,
                 notReviewed: false,
                 categoriesFilled: t.stopsFilled, hasArtwork: t.hasArtwork)
@@ -242,6 +251,7 @@ struct RootView: View {
             case .library: LibraryView()
             case .tagQueue: TagQueueView(goToTag: { tab = .tag })
             case .tag: TagView()
+            case .review: ReviewQueueView()
             default:
                 Text("\(tab.rawValue) — coming next").foregroundStyle(Theme.muted)
                     .frame(maxWidth: .infinity, maxHeight: .infinity).background(Theme.window)
