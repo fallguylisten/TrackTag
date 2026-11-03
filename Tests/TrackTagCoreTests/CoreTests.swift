@@ -35,3 +35,20 @@ final class CoreTests: XCTestCase {
                                   isNew: false, notReviewed: false, categoriesFilled: 8, hasArtwork: true), .none)
     }
 }
+
+final class CleanupTests: XCTestCase {
+    func testParenVersionBecomesBrackets() {
+        let c = Cleanup.clean(title: "Ghetto Opera (Loft Mix)-X1501", artist: "Nicholas ft. Nikki-O", composer: "")
+        XCTAssertEqual(c.title, "Ghetto Opera [Loft Mix]")
+        XCTAssertEqual(c.artist, "Nicholas, Nikki-O")
+        XCTAssertEqual(c.remixer, "Loft")
+    }
+    func testKeepsNameParensNotesAndFlags() {
+        let c = Cleanup.clean(title: "Be (Show Me Love) [Gaszia Edit] <108 > 127> !review!", artist: "Robin S", composer: "")
+        XCTAssertEqual(c.title, "Be (Show Me Love) [Gaszia Edit] <108 > 127> !review!")
+        XCTAssertEqual(c.remixer, "Gaszia")
+    }
+    func testAmpersandStays() {
+        XCTAssertEqual(Cleanup.splitArtists("Jay-Z & Kanye West x Frank Ocean"), ["Jay-Z & Kanye West", "Frank Ocean"])
+    }
+}

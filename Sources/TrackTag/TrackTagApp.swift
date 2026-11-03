@@ -41,6 +41,11 @@ enum AppTab: String, CaseIterable, Identifiable {
 
 enum QueueKind { case review, tags }
 
+enum QueueReason: String {
+    case recheck = "Re-check tags", newImport = "New import", sent = "Sent from Library",
+         incomplete = "Not fully tagged", reappraise = "Re-appraise (oldest)"
+}
+
 @MainActor
 final class LibraryStore: ObservableObject {
     @Published var tracks: [Track] = []
@@ -84,6 +89,55 @@ final class LibraryStore: ObservableObject {
             out[t.id] = step
         }
         nextStep = out
+    }
+
+    // MARK: Tag Queue
+
+    /// Track shown in the Tag Queue side panel and on the Tag tab.
+    @Published var currentID: String?
+    @Published var saveMessage: String?
+
+    /// Tag Queue rows with the reason each is there. Order: re-check, new, sent, incomplete, re-appraise.
+    var tagQueue: [(track: Track, reason: QueueReason)] {
+        let monthAgo = Date().addingTimeInterval(-30 * 86_400)
+        var out: [(Track, QueueReason)] = []
+        var used = Set<String>()
+        func add(_ t: Track, _ r: QueueReason) { if used.insert(t.id).inserted { out.append((t, r)) } }
+        let open = tracks.filter { !queues.reviewed.contains($0.id) }
+        for t in open where t.title.flags.contains(where: { $0.lowercased() == "review" }) { add(t, .recheck) }
+        for t in open where (t.dateAdded ?? .distantPast) > monthAgo { add(t, .newImport) }
+        for t in open where queues.tagQueue.contains(t.id) { add(t, .sent) }
+        for t in open where nextStep[t.id] == .needsTags { add(t, .incomplete) }
+        // Re-appraise: the 10 tracks touched longest ago, even if reviewed before.
+        let oldest = tracks.sorted { ($0.dateModified ?? .distantPast) < ($1.dateModified ?? .distantPast) }.prefix(10)
+        for t in oldest { add(t, .reappraise) }
+        return out.map { (track: $0.0, reason: $0.1) }
+    }
+
+    /// Writes the edited fields through Music, then updates the in-memory track.
+    func save(_ id: String, title: String, artist: String, remixer: String, source: String, year: Int) {
+        guard let i = tracks.firstIndex(where: { $0.id == id }) else { return }
+        var values: [MusicWriter.Field: Any] = [:]
+        let t = tracks[i]
+        if title != t.title.raw { values[.name] = title }
+        if artist != t.artist { values[.artist] = artist }
+        if remixer != t.composer { values[.composer] = remixer }
+        if source != t.grouping { values[.grouping] = source }
+        if year != t.year { values[.year] = year }
+        guard !values.isEmpty else { saveMessage = "Nothing changed"; return }
+        do {
+            try MusicWriter().write(trackID: id, values)
+            tracks[i].title = Title(title); tracks[i].artist = artist; tracks[i].composer = remixer
+            tracks[i].grouping = source; tracks[i].year = year
+            recompute()
+            saveMessage = "Saved \(values.count) field\(values.count == 1 ? "" : "s") to Music"
+        } catch {
+            saveMessage = "Couldn’t save: \(error.localizedDescription)"
+        }
+    }
+
+    func markReviewed(_ id: String) {
+        queues.reviewed.insert(id); queues.tagQueue.remove(id); queues.save(); recompute()
     }
 
     func send(_ ids: [String], to kind: QueueKind) {
@@ -149,6 +203,7 @@ struct RootView: View {
             TabBar(tab: $tab)
             switch tab {
             case .library: LibraryView()
+            case .tagQueue: TagQueueView(goToTag: { tab = .tag })
             default:
                 Text("\(tab.rawValue) — coming next").foregroundStyle(Theme.muted)
                     .frame(maxWidth: .infinity, maxHeight: .infinity).background(Theme.window)

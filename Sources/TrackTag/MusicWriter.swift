@@ -3,7 +3,7 @@ import Foundation
 /// Writes through Apple Music's scripting interface — never to the files or Music's database
 /// directly. Same approach as scripts/tracktag-migrate.js, which ran cleanly on this library.
 struct MusicWriter {
-    enum Field: String { case name, artist, composer, comment, genre, grouping, rating }
+    enum Field: String { case name, artist, composer, comment, genre, grouping, rating, year }
 
     struct WriteError: Error, LocalizedError {
         let message: String

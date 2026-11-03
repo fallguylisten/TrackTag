@@ -15,6 +15,7 @@ struct Track: Identifiable, Hashable {
     var bpm: Int
     var year: Int
     var dateAdded: Date?
+    var dateModified: Date?
     var fileURL: URL?
     var kind: FileKind
     var hasArtwork: Bool
@@ -70,6 +71,7 @@ struct LibraryReader {
                 bpm: item.beatsPerMinute,
                 year: item.year,
                 dateAdded: item.addedDate,
+                dateModified: item.modifiedDate,
                 fileURL: item.location,
                 kind: ext == "mp3" ? .mp3 : (ext == "wav" ? .wav : .other),
                 hasArtwork: item.hasArtworkAvailable
