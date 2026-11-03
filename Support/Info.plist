@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>com.fallguylisten.TrackTag</string>
+	<key>CFBundleName</key>
+	<string>TrackTag</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.1.0</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>TrackTag writes your tags, titles and energy ratings through Apple Music, so Music stays the source of truth.</string>
+</dict>
+</plist>
