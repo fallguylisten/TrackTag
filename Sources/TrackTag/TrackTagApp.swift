@@ -182,7 +182,11 @@ struct TabBar: View {
             HStack(spacing: 8) {
                 if let icon { Image(systemName: icon).font(.system(size: 13)) }
                 else { Circle().fill(active ? Color(hex: 0x1A1206) : t.dot).frame(width: 7, height: 7) }
-                Text(t.rawValue).font(.system(size: 14, weight: active || main ? .semibold : .regular))
+                // Reserve the bold width so tabs don't shift when the active one turns bold.
+                ZStack {
+                    Text(t.rawValue).font(.system(size: 14, weight: .semibold)).hidden()
+                    Text(t.rawValue).font(.system(size: 14, weight: active || main ? .semibold : .regular))
+                }
             }
             .padding(.horizontal, main ? 22 : 16).padding(.vertical, 8)
             .foregroundStyle(active ? Color(hex: 0x1A1206) : Theme.text2)
