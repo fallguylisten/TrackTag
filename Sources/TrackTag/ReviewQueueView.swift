@@ -6,6 +6,7 @@ import TrackTagCore
 /// Review Queue: tracks to replace (poor sound, flags, files at risk) with the replace flow.
 struct ReviewQueueView: View {
     @EnvironmentObject var store: LibraryStore
+    @EnvironmentObject var player: Player
     @State private var selected: String?
     @State private var reasonFilter: ReviewReason?
     @State private var query = ""
@@ -33,10 +34,10 @@ struct ReviewQueueView: View {
                     .frame(width: 420).background(Theme.panel)
             }
             ShortcutBar(items: [("↑ ↓", "previous / next track"), ("⌘O", "find replacement"),
-                                ("Return", "make replacement"), ("N", "not a match"), ("⌘F", "search")])
+                                ("Return", "make replacement"), ("N", "not a match"), ("Space", "play / pause"), ("⌘F", "search")])
         }
         .background(Theme.window)
-        .onAppear { if selected == nil { selected = items.first?.id } }
+        .onAppear { if selected == nil { selected = items.first?.id }; store.focusID = selected }
     }
 
     private func goNext() {
@@ -83,6 +84,10 @@ struct ReviewQueueView: View {
             List(selection: $selected) {
                 ForEach(items) { item in ReviewRow(item: item).tag(item.id) }
             }
+            .contextMenu(forSelectionType: String.self, menu: { _ in }, primaryAction: { ids in
+                if let id = ids.first, let t = store.tracks.first(where: { $0.id == id }) { player.play(t) }
+            })
+            .onChange(of: selected) { store.focusID = selected }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .background(RoundedRectangle(cornerRadius: 12).fill(Theme.card))
@@ -162,9 +167,7 @@ struct ReviewPanel: View {
                         if let m = store.reviewMessage { banner(m) }
                         label("Selected track")
                         HStack(spacing: 12) {
-                            RoundedRectangle(cornerRadius: 8).fill(Theme.orange.opacity(t.hasArtwork ? 0.35 : 0))
-                                .overlay(RoundedRectangle(cornerRadius: 8).stroke(t.hasArtwork ? Color.clear : Theme.muted))
-                                .frame(width: 48, height: 48)
+                            ArtView(id: t.id, has: t.hasArtwork, size: 48, corner: 8)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(t.titleText).font(.system(size: 18, weight: .semibold)).lineLimit(2)
                                 Text("\(t.artist) · \(t.kind.rawValue.uppercased()) · \(t.bitrate) kbps · \(t.grouping)")

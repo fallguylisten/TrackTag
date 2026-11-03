@@ -59,6 +59,7 @@ struct LibraryReader {
             guard item.mediaKind == .kindSong else { return nil }
             let grouping = item.grouping ?? ""
             if grouping.trimmingCharacters(in: .whitespaces) == "MIX" { return nil }
+            ArtworkCache.shared.register(String(format: "%016llX", item.persistentID.uint64Value), item)
             let ext = item.location?.pathExtension.lowercased() ?? ""
             return Track(
                 id: String(format: "%016llX", item.persistentID.uint64Value),

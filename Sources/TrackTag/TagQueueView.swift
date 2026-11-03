@@ -4,6 +4,7 @@ import TrackTagCore
 /// Tag Queue: tracks waiting to be tagged, with the field editor on the right.
 struct TagQueueView: View {
     @EnvironmentObject var store: LibraryStore
+    @EnvironmentObject var player: Player
     let goToTag: () -> Void
     @State private var query = ""
     @State private var reasonFilter: QueueReason?
@@ -42,10 +43,13 @@ struct TagQueueView: View {
                     .background(Theme.panel)
             }
             ShortcutBar(items: [("↑ ↓", "previous / next track"), ("⌘K", "clean up"), ("⌘S", "save fields"),
-                                ("⌘Z", "revert"), ("Return", "start tagging this track"), ("⌘F", "search")])
+                                ("⌘Z", "revert"), ("Return", "start tagging this track"), ("Space", "play / pause"), ("⌘F", "search")])
         }
         .background(Theme.window)
-        .onAppear { if store.currentID == nil { store.currentID = queue.first?.track.id } }
+        .onAppear {
+            if store.currentID == nil { store.currentID = queue.first?.track.id }
+            store.focusID = store.currentID
+        }
     }
 
     private var listSide: some View {
@@ -89,6 +93,10 @@ struct TagQueueView: View {
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.border))
             .onKeyPress(.return) { goToTag(); return .handled }
+            .contextMenu(forSelectionType: String.self, menu: { _ in }, primaryAction: { ids in
+                if let id = ids.first, let t = store.tracks.first(where: { $0.id == id }) { player.play(t) }
+            })
+            .onChange(of: store.currentID) { store.focusID = store.currentID }
         }
         .padding(24)
     }
@@ -169,10 +177,7 @@ struct FieldEditor: View {
                 VStack(alignment: .leading, spacing: 14) {
                     sectionLabel("Selected track")
                     HStack(spacing: 12) {
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(t.hasArtwork ? Theme.orange.opacity(0.35) : Color.clear)
-                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(t.hasArtwork ? Color.clear : Theme.muted))
-                            .frame(width: 48, height: 48)
+                        ArtView(id: t.id, has: t.hasArtwork, size: 48, corner: 8)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(t.titleText).font(.system(size: 18, weight: .semibold)).lineLimit(2)
                             Text(t.artist).font(.system(size: 13)).foregroundStyle(Theme.muted).lineLimit(1)

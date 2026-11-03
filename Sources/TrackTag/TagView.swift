@@ -37,14 +37,14 @@ struct TagView: View {
                 .focusEffectDisabled()
                 .focused($keysFocused)
                 .onKeyPress(phases: .down, action: handleKey)
-                .onAppear { load(t); keysFocused = true }
-                .onChange(of: store.currentID) { if let n = track { load(n) } }
+                .onAppear { load(t); keysFocused = true; store.focusID = t.id }
+                .onChange(of: store.currentID) { if let n = track { load(n); store.focusID = n.id } }
             } else {
                 Text("Pick a track in the Tag Queue first").foregroundStyle(Theme.muted)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             ShortcutBar(items: [("A–Z", "toggle tag"), ("1–5", "energy"), ("↑ ↓", "category"),
-                                ("← →", "previous / next track (saves)"), ("Return", "save, next track")])
+                                ("← →", "previous / next track (saves)"), ("Return", "save, next track"), ("Space", "play / pause")])
         }
         .background(Theme.window)
     }
@@ -54,10 +54,7 @@ struct TagView: View {
     private func header(_ t: Track) -> some View {
         let idx = (queueIDs.firstIndex(of: t.id) ?? 0) + 1
         return HStack(spacing: 18) {
-            RoundedRectangle(cornerRadius: 10)
-                .fill(t.hasArtwork ? Theme.orange.opacity(0.35) : Color.clear)
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(t.hasArtwork ? Color.clear : Theme.muted))
-                .frame(width: 80, height: 80)
+            ArtView(id: t.id, has: t.hasArtwork, size: 80, corner: 10)
             VStack(alignment: .leading, spacing: 2) {
                 Text(t.title.display.replacingOccurrences(of: t.title.version.map { " [\($0)]" } ?? "", with: ""))
                     .font(.system(size: 26, weight: .bold)).lineLimit(1)

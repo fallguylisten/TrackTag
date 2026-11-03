@@ -10,6 +10,7 @@ enum LibraryFilter: String, CaseIterable, Identifiable {
 /// "send to queue" buttons above the player.
 struct LibraryView: View {
     @EnvironmentObject var store: LibraryStore
+    @EnvironmentObject var player: Player
     @State private var query = ""
     @State private var filter: LibraryFilter = .all
     @State private var selection = Set<Track.ID>()
@@ -71,7 +72,7 @@ struct LibraryView: View {
 
             if !selection.isEmpty { selectionBar }
             ShortcutBar(items: [("↑ ↓", "previous / next track"), ("⇧ ↑ ↓", "select several"),
-                                ("⌘ click", "add / remove"), ("⌘A", "select all"), ("esc", "clear selection"),
+                                ("⌘ click", "add / remove"), ("⌘A", "select all"), ("esc", "clear selection"), ("Space", "play / pause"),
                                 ("⌘F", "search")])
         }
         .background(Theme.window)
@@ -99,6 +100,10 @@ struct LibraryView: View {
             }
         }
         .onExitCommand { selection.removeAll() }
+        .contextMenu(forSelectionType: Track.ID.self, menu: { _ in }, primaryAction: { ids in
+            if let id = ids.first, let t = store.tracks.first(where: { $0.id == id }) { player.play(t) }
+        })
+        .onChange(of: selection) { store.focusID = selection.first }
         .scrollContentBackground(.hidden)
         .background(RoundedRectangle(cornerRadius: 12).fill(Theme.card))
         .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -113,7 +118,7 @@ struct LibraryView: View {
         if selection.contains(id) { selection.remove(id) } else { selection.insert(id) }
     }
     private var artColumn: some TableColumnContent<Track, KeyPathComparator<Track>> {
-        TableColumn("Art", sortUsing: KeyPathComparator(\Track.artSort)) { (t: Track) in ArtCell(has: t.hasArtwork) }
+        TableColumn("Art", sortUsing: KeyPathComparator(\Track.artSort)) { (t: Track) in ArtView(id: t.id, has: t.hasArtwork) }
             .width(30).customizationID("art")
     }
     private var titleColumn: some TableColumnContent<Track, KeyPathComparator<Track>> {

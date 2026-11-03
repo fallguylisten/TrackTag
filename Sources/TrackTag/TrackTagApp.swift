@@ -17,9 +17,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 struct TrackTagApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var store = LibraryStore()
+    @StateObject private var player = Player()
     var body: some Scene {
         WindowGroup("TrackTag") {
-            RootView().environmentObject(store)
+            RootView().environmentObject(store).environmentObject(player)
                 .frame(minWidth: 1200, minHeight: 760)
                 .preferredColorScheme(.dark)
         }
@@ -69,6 +70,8 @@ final class LibraryStore: ObservableObject {
     @Published var bulkProgress: (done: Int, total: Int)?
     @Published var bulkMessage: String?
     @Published var lastReplace: ReplaceUndo?
+    /// The track Space plays: the selection on whichever tab is showing.
+    @Published var focusID: String?
     var cutoffs: GradeCutoffs { settings.cutoffs }
     var scanCache = ScanCache.load()
 
@@ -290,6 +293,7 @@ struct TabBar: View {
 
 struct RootView: View {
     @EnvironmentObject var store: LibraryStore
+    @EnvironmentObject var player: Player
     @State private var tab: AppTab = .library
 
     var body: some View {
@@ -305,8 +309,15 @@ struct RootView: View {
                 Text("\(tab.rawValue) — coming next").foregroundStyle(Theme.muted)
                     .frame(maxWidth: .infinity, maxHeight: .infinity).background(Theme.window)
             }
+            PlayerBar()
         }
         .background(Theme.window)
         .task { store.load() }
+        .onAppear {
+            SpaceKey.install {
+                let id = store.focusID ?? player.trackID
+                if let id, let t = store.tracks.first(where: { $0.id == id }) { player.play(t) } else { player.toggle() }
+            }
+        }
     }
 }
