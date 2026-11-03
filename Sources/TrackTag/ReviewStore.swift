@@ -20,6 +20,15 @@ extension LibraryStore {
         cutoffs.grade(ceilingKHz: ceilings[t.id], kind: t.kind)
     }
 
+    /// Grade as the queues see it: a Poor file only counts if that file type is switched on in Settings.
+    func reviewGrade(_ t: Track) -> SoundGrade {
+        let g = grade(t)
+        guard g == .poor else { return g }
+        if t.kind == .mp3 && !settings.flagPoorMP3 { return .good }
+        if t.kind == .wav && !settings.flagPoorWAV { return .good }
+        return .poor
+    }
+
     /// Fills ceilings from the saved cache and the Nov 2 scan, then scans the rest in the background.
     func startScan() {
         let seeds = ScanCache.seedPaths()
@@ -78,9 +87,9 @@ extension LibraryStore {
             let flags = t.title.flags.filter { $0.lowercased() != "review" }
             if let f = flags.first { add(t, .flagged, f) }
         }
-        for t in tracks where t.fileAtRisk { add(t, .atRisk) }
+        if settings.flagAtRisk { for t in tracks where t.fileAtRisk { add(t, .atRisk) } }
         // Poor sound: only tracks you actually play (energy 3+) so the queue stays focused.
-        let poor = tracks.filter { grade($0) == .poor && $0.energy >= 3 }
+        let poor = tracks.filter { reviewGrade($0) == .poor && (!settings.poorOnlyPlayed || $0.energy >= 3) }
             .sorted { ($0.energy, $0.title.display) > ($1.energy, $1.title.display) }
         for t in poor { add(t, .poor, String(format: "%.1f kHz", ceilings[t.id] ?? 0)) }
         for t in tracks where queues.reviewQueue.contains(t.id) { add(t, .sent) }
@@ -168,5 +177,54 @@ extension LibraryStore {
             recompute()
             reviewMessage = "Deleted \(t.titleText). Its file is in ~/Music/TrackTag/Deleted."
         } catch { reviewMessage = "Couldn’t delete: \(error.localizedDescription)" }
+    }
+}
+
+// MARK: Bulk tag changes (Settings → Tags)
+
+extension LibraryStore {
+    /// Renames or merges `tag` into `target` on every track, or removes it when `target` is nil.
+    /// Saves an undo file first (same format as the scripts: revert with tracktag-migrate.js revert).
+    func bulkTagChange(_ tag: String, to target: String?) {
+        let affected = tracks.enumerated().filter { $0.element.comments.has(tag) }
+        guard !affected.isEmpty else { return }
+        let undo: [[String: Any]] = affected.map { (i, t) in
+            ["pid": t.id, "index": i, "title": t.titleText,
+             "old": ["comment": t.comments.rendered(categoryOrder: TagStops.writeRank)]]
+        }
+        let dir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Music/TrackTag")
+        let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
+        let undoURL = dir.appendingPathComponent("undo-tags-\(stamp).json")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        if let d = try? JSONSerialization.data(withJSONObject: undo) { try? d.write(to: undoURL) }
+
+        var jobs: [(id: String, comments: Comments)] = []
+        for (_, t) in affected {
+            var c = t.comments
+            c.tags.removeAll { $0 == tag }
+            if let target, !c.tags.contains(target) { c.tags.append(target) }
+            jobs.append((t.id, c))
+        }
+        bulkProgress = (0, jobs.count)
+        let work = jobs
+        Task.detached(priority: .userInitiated) {
+            var done = 0, failed = 0
+            for job in work {
+                let text = job.comments.rendered(categoryOrder: TagStops.writeRank)
+                do { try MusicWriter().write(trackID: job.id, [.comment: text]) } catch { failed += 1 }
+                done += 1
+                let d = done
+                await MainActor.run {
+                    if let i = self.tracks.firstIndex(where: { $0.id == job.id }) { self.tracks[i].comments = job.comments }
+                    self.bulkProgress = d == work.count ? nil : (d, work.count)
+                }
+            }
+            let f = failed
+            await MainActor.run {
+                self.rebuildCounts(); self.recompute()
+                self.bulkMessage = (target == nil ? "Removed \(tag) from" : "Changed \(tag) → \(target!) on")
+                    + " \(work.count - f) tracks" + (f > 0 ? " (\(f) failed)" : "") + ". Undo file: \(undoURL.lastPathComponent)"
+            }
+        }
     }
 }

@@ -53,14 +53,21 @@ final class LibraryStore: ObservableObject {
     @Published var queues = QueueState.load()
     @Published var error: String?
     @Published var loading = false
-    let rules = NextStepRules()
+    @Published var settings = AppSettings.load() {
+        didSet { if settings != oldValue { settings.save(); recompute() } }
+    }
+    var rules: NextStepRules {
+        var r = NextStepRules(); r.needsTagsBelowFraction = Double(settings.needsTagsPercent) / 100; return r
+    }
 
     // Review Queue state
     @Published var ceilings: [String: Double] = [:]      // track ID -> sound ceiling (kHz)
     @Published var scanProgress: (done: Int, total: Int)?
     @Published var replacedThisSession: Set<String> = []
     @Published var reviewMessage: String?
-    var cutoffs = GradeCutoffs()
+    @Published var bulkProgress: (done: Int, total: Int)?
+    @Published var bulkMessage: String?
+    var cutoffs: GradeCutoffs { settings.cutoffs }
     var scanCache = ScanCache.load()
 
     func load() {
@@ -86,14 +93,15 @@ final class LibraryStore: ObservableObject {
 
     func recompute(risk newRisk: [String: Bool]? = nil) {
         if let r = newRisk { risk = r }
-        let monthAgo = Date().addingTimeInterval(-30 * 86_400)
+        let monthAgo = Date().addingTimeInterval(-Double(settings.newImportDays) * 86_400)
+        let r = rules
         var out: [String: NextStep] = [:]
         for t in tracks {
-            var step = rules.nextStep(
-                titleFlags: t.title.flags, grade: grade(t), fileAtRisk: risk[t.id] ?? false,
+            var step = r.nextStep(
+                titleFlags: t.title.flags, grade: reviewGrade(t), fileAtRisk: settings.flagAtRisk && (risk[t.id] ?? false),
                 isNew: (t.dateAdded ?? .distantPast) > monthAgo,
                 notReviewed: false,
-                categoriesFilled: t.stopsFilled, hasArtwork: t.hasArtwork)
+                categoriesFilled: t.stopsFilled, hasArtwork: t.hasArtwork || !settings.noArtNeedsTags)
             if queues.reviewQueue.contains(t.id) { step = .needsReview }
             else if step == .none && queues.tagQueue.contains(t.id) { step = .needsTags }
             out[t.id] = step
@@ -109,7 +117,7 @@ final class LibraryStore: ObservableObject {
 
     /// Tag Queue rows with the reason each is there. Order: re-check, new, sent, incomplete, re-appraise.
     var tagQueue: [(track: Track, reason: QueueReason)] {
-        let monthAgo = Date().addingTimeInterval(-30 * 86_400)
+        let monthAgo = Date().addingTimeInterval(-Double(settings.newImportDays) * 86_400)
         var out: [(Track, QueueReason)] = []
         var used = Set<String>()
         func add(_ t: Track, _ r: QueueReason) { if used.insert(t.id).inserted { out.append((t, r)) } }
@@ -119,7 +127,7 @@ final class LibraryStore: ObservableObject {
         for t in open where queues.tagQueue.contains(t.id) { add(t, .sent) }
         for t in open where nextStep[t.id] == .needsTags { add(t, .incomplete) }
         // Re-appraise: the 10 tracks touched longest ago, even if reviewed before.
-        let oldest = tracks.sorted { ($0.dateModified ?? .distantPast) < ($1.dateModified ?? .distantPast) }.prefix(10)
+        let oldest = tracks.sorted { ($0.dateModified ?? .distantPast) < ($1.dateModified ?? .distantPast) }.prefix(settings.reappraiseCount)
         for t in oldest { add(t, .reappraise) }
         return out.map { (track: $0.0, reason: $0.1) }
     }
@@ -252,6 +260,7 @@ struct RootView: View {
             case .tagQueue: TagQueueView(goToTag: { tab = .tag })
             case .tag: TagView()
             case .review: ReviewQueueView()
+            case .settings: SettingsView()
             default:
                 Text("\(tab.rawValue) — coming next").foregroundStyle(Theme.muted)
                     .frame(maxWidth: .infinity, maxHeight: .infinity).background(Theme.window)
