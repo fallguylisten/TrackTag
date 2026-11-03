@@ -1,6 +1,11 @@
 // swift-tools-version:5.9
 // Open this folder in Xcode (File → Open… → the TrackTag folder) and press Run.
 import PackageDescription
+import Foundation
+
+// Absolute path so the linker finds Info.plist no matter where Xcode runs it from.
+let infoPlist = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+    .appendingPathComponent("Support/Info.plist").path
 
 let package = Package(
     name: "TrackTag",
@@ -20,7 +25,7 @@ let package = Package(
                 .linkedFramework("iTunesLibrary"),
                 // Embeds Info.plist so macOS shows the "control Music" permission prompt.
                 .unsafeFlags(["-Xlinker", "-sectcreate", "-Xlinker", "__TEXT",
-                              "-Xlinker", "__info_plist", "-Xlinker", "Support/Info.plist"]),
+                              "-Xlinker", "__info_plist", "-Xlinker", infoPlist]),
             ]
         ),
         .testTarget(name: "TrackTagCoreTests", dependencies: ["TrackTagCore"]),
